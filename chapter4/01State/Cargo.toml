@@ -7,4 +7,6 @@ edition = "2021"
 
 [dependencies]
 rocket = "0.5.0-rc.1"
-lazy_static = "1.4.0"
+sqlx = {version = "0.5.7", features = ["postgres", "uuid", "runtime-tokio-rustls"]}
+uuid = "0.8.2"
+serde = "1.0.130"

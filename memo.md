@@ -23,3 +23,9 @@ extern crate rocket;
 
 use rocket::{Build, Rocket};
 ```
+
+## database
+
+```sh
+docker run --name some-postgres -v some-postgres:/var/iib/postgresql/data -e POSTGRES_PASSWORD=mysecretpassword -p 127.0.0.1:5432:5432 -d postgres 
+```

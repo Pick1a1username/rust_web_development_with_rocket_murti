@@ -1,9 +1,8 @@
-// Todo: Chapter 3 Built-in implementationsssh-
+// Todo: Chapter 4: Implement the routine to read the configuration and map it into the rocket() function:
 
 #[macro_use]
 extern crate rocket;
 
-use std::collections::HashMap;
 use std::io::Cursor;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -13,7 +12,9 @@ use rocket::fs::{NamedFile, relative};
 use rocket::response::{self, Responder, Response};
 use rocket::request::{FromParam, Request};
 use rocket::http::{ContentType, Status};
-use lazy_static::lazy_static;
+use serde::Deserialize;
+use sqlx::FromRow;
+use uuid::Uuid;
 
 #[derive(FromForm)]
 struct Filters {
@@ -28,13 +29,17 @@ fn default_response<'r>() -> response::Response<'r> {
         .finalize()
 }
 
-#[derive(Debug)]
+#[derive(Debug, FromRow)]
+#[sqlx(rename_all = "camelCase")]
 struct User {
     uuid: String,
     name: String,
-    age: u8,
-    grade: u8,
-    active: bool,
+    age: i16,
+    grade: i16,
+    #[sqlx(rename = "active")]
+    present: bool,
+    #[sqlx(default)]
+    not_in_database: String,
 }
 
 impl<'r> Responder<'r, 'r> for &'r User {
@@ -102,21 +107,10 @@ impl VisitorCounter {
         );
     }
 }
-lazy_static! {
-    static ref USERS: HashMap<&'static str, User> = {
-        let mut map = HashMap::new();
-        map.insert(
-            "3e3dd4ae-3c37-40c6-aa64-7061f284ce28",
-            User {
-                uuid: "3e3dd4ae-3c37-40c6-aa64-7061f284ce28".to_string(),
-                name: "John".to_string(),
-                age: 8,
-                grade: 99,
-                active: true,
-            },      
-        );
-        map
-    };
+
+#[derive(Deserialize)]
+struct Config {
+    database_url: String,
 }
 
 #[route(GET, uri = "/favicon.png")]
