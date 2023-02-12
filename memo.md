@@ -29,3 +29,7 @@ use rocket::{Build, Rocket};
 ```sh
 docker run --name some-postgres -v some-postgres:/var/iib/postgresql/data -e POSTGRES_PASSWORD=mysecretpassword -p 127.0.0.1:5432:5432 -d postgres 
 ```
+
+```
+export DATABASE_URL=postgres://postgres:mysecretpassword@127.0.0.1:5432/postgres
+```

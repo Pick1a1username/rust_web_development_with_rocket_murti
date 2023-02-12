@@ -13,7 +13,8 @@ use rocket::response::{self, Responder, Response};
 use rocket::request::{FromParam, Request};
 use rocket::http::{ContentType, Status};
 use serde::Deserialize;
-use sqlx::FromRow;
+use sqlx::{FromRow, PgPool};
+use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
 
 #[derive(FromForm)]
@@ -30,19 +31,15 @@ fn default_response<'r>() -> response::Response<'r> {
 }
 
 #[derive(Debug, FromRow)]
-#[sqlx(rename_all = "camelCase")]
 struct User {
-    uuid: String,
+    uuid: Uuid,
     name: String,
     age: i16,
     grade: i16,
-    #[sqlx(rename = "active")]
-    present: bool,
-    #[sqlx(default)]
-    not_in_database: String,
+    active: bool,
 }
 
-impl<'r> Responder<'r, 'r> for &'r User {
+impl<'r> Responder<'r, 'r> for User {
     fn respond_to(self, _: &'r Request<'_>) -> response::Result<'r> {
         let base_response = default_response();
         let user = format!("Found user: {:?}", self);
@@ -77,9 +74,9 @@ impl<'r> FromParam<'r> for NameGrade<'r> {
     }
 }
 
-struct NewUser<'a>(Vec<&'a User>);
+struct NewUser(Vec<User>);
 
-impl<'r> Responder<'r, 'r> for NewUser<'r> {
+impl<'r> Responder<'r, 'r> for NewUser {
     fn respond_to(self, _: &'r Request<'_>) -> response::Result<'r> {
         let base_response = default_response();
         let user =self
@@ -129,39 +126,70 @@ fn forbidden(req: &Request) -> String {
 }
 
 #[route(GET, uri = "/user/<uuid>", rank = 1, format = "text/plain")]
-fn user<'a>(counter: &State<VisitorCounter>, uuid: &'a str) -> Option<&'a User> { 
+async fn user(
+    counter: &State<VisitorCounter>,
+    pool: &rocket::State<PgPool>,
+    uuid: &str
+) -> Result<User, Status> { 
     counter.increment_counter();
-    USERS.get(uuid)
+    let parsed_uuid = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
+    let user = sqlx::query_as!(
+            User,
+            "SELECT * FROM users WHERE uuid = $1",
+            parsed_uuid
+        )
+        .fetch_one(pool.inner())
+        .await;
+    user.map_err(|_| Status::NotFound)
 }
 
 #[route(GET, uri = "/users/<name_grade>?<filters..>")]
-fn users<'a>(counter: &State<VisitorCounter>, name_grade: NameGrade, filters: Option<Filters>) -> Result<NewUser<'a>, Status> {
+async fn users(
+    counter: &State<VisitorCounter>,
+    pool: &rocket::State<PgPool>,
+    name_grade: NameGrade<'_>, 
+    filters: Option<Filters>,
+) -> Result<NewUser, Status> {
     counter.increment_counter();
-    let users: Vec<&User> = USERS
-        .values()
-        .filter(|user| user.name.contains(&name_grade.name) && user.grade == name_grade.grade)
-        .filter(|user| {
-            if let Some(fts) = &filters {
-                user.age == fts.age && user.active == fts.active
-            } else {
-                true
-            }
-        })
-        .collect();
+    let mut query_str = String::from("SELECT * FROM users WHERE name LIKE $1 AND grade = $2");
+    if filters.is_some() {
+        query_str.push_str(" AND age = $3 AND active = $4");
+    }
+    let mut query = sqlx::query_as::<_, User>(&query_str)
+        .bind(format!("%{}%", &name_grade.name))
+        .bind(name_grade.grade as i16);
+    if let Some(fts) = &filters {
+        query = query
+            .bind(fts.age as i16)
+            .bind(fts.active);
+    }
+    let unwrapped_users = query.fetch_all(pool.inner()).await;
+    let users: Vec<User> = unwrapped_users.map_err(|_| Status::InternalServerError)?;
     if users.is_empty() {
-        Err(Status::Forbidden)
+        Err(Status::NotFound)
     } else {
         Ok(NewUser(users))
     }
 }
 
 #[launch]
-fn rocket() -> Rocket<Build> {
+async fn rocket() -> Rocket<Build> {
+    let our_rocket = rocket::build();
+    let config: Config = our_rocket
+        .figment()
+        .extract()
+        .expect("Incorrect Rocket.toml configuration");
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&config.database_url)
+        .await
+        .expect("Failed to connect to database");
     let visitor_counter = VisitorCounter {
         visitor: AtomicU64::new(0),
     };
-    rocket::build()
+    our_rocket
         .manage(visitor_counter)
+        .manage(pool)
         .mount("/", routes![user, users, favicon])
         .register("/", catchers![not_found, forbidden])
 }
