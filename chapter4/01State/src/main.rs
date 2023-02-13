@@ -126,10 +126,32 @@ impl Fairing for VisitorCounter {
     }
 }
 
+struct XTraceId {}
+
+#[rocket::async_trait]
+impl Fairing for XTraceId {
+    fn info(&self) -> Info {
+        Info {
+            name: "X-TRACE-ID Injector",
+            kind: Kind::Request | Kind::Response, 
+        }
+    }
+    async fn on_request(&self, req: &mut Request<'_>, _: &mut Data<'_>) {
+        let header = Header::new(X_TRACE_ID, Uuid::new_v4().to_hyphenated().to_string());
+        req.add_header(header)
+    }
+    async fn on_response<'r>(&self, req: &'r Request<'_>, res: &mut Response<'r>) {
+        let header = req.headers().get_one(X_TRACE_ID).unwrap();
+        res.set_header(Header::new(X_TRACE_ID, header));
+    }
+}
+
 #[derive(Deserialize)]
 struct Config {
     database_url: String,
 }
+
+const X_TRACE_ID: &str = "X-TRACE-ID";
 
 #[route(GET, uri = "/favicon.png")]
 async fn favicon() -> NamedFile {
@@ -191,6 +213,7 @@ async fn users(
 
 #[launch]
 async fn rocket() -> Rocket<Build> {
+    let x_trace_id = XTraceId {};
     let our_rocket = rocket::build();
     let config: Config = our_rocket
         .figment()
@@ -206,6 +229,7 @@ async fn rocket() -> Rocket<Build> {
     };
     our_rocket
         .attach(visitor_counter)
+        .attach(x_trace_id)
         .manage(pool)
         .mount("/", routes![user, users, favicon])
         .register("/", catchers![not_found, forbidden])
