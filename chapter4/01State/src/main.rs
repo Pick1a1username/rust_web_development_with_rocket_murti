@@ -1,4 +1,4 @@
-// Todo: Chapter 4: Implement the routine to read the configuration and map it into the rocket() function:
+// Todo: Chapter 4: Attaching Rocket fairings
 
 #[macro_use]
 extern crate rocket;
@@ -7,11 +7,12 @@ use std::io::Cursor;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use rocket::{Build, Rocket, State};
+use rocket::{Build, Data, Orbit, Rocket, State};
+use rocket::fairing::{self, Fairing, Info, Kind};
 use rocket::fs::{NamedFile, relative};
-use rocket::response::{self, Responder, Response};
+use rocket::http::{ContentType, Header, Status};
 use rocket::request::{FromParam, Request};
-use rocket::http::{ContentType, Status};
+use rocket::response::{self, Responder, Response};
 use serde::Deserialize;
 use sqlx::{FromRow, PgPool};
 use sqlx::postgres::PgPoolOptions;
@@ -105,6 +106,26 @@ impl VisitorCounter {
     }
 }
 
+#[rocket::async_trait]
+impl Fairing for VisitorCounter {
+    fn info(&self) -> Info {
+        Info {
+            name: "Visitor Counter",
+            kind: Kind::Ignite | Kind::Liftoff | Kind::Request,
+        }
+    }
+    async fn on_ignite(&self, rocket: Rocket<Build>) -> fairing::Result {
+        println!("Setting up visitor counter");
+        Ok(rocket)
+    }
+    async fn on_liftoff(&self, _: &Rocket<Orbit>) {
+        println!("Finish setting up visitor counter");
+    }
+    async fn on_request(&self, _: &mut Request<'_>, _: &mut Data<'_>) {
+        self.increment_counter()
+    }
+}
+
 #[derive(Deserialize)]
 struct Config {
     database_url: String,
@@ -127,11 +148,9 @@ fn forbidden(req: &Request) -> String {
 
 #[route(GET, uri = "/user/<uuid>", rank = 1, format = "text/plain")]
 async fn user(
-    counter: &State<VisitorCounter>,
     pool: &rocket::State<PgPool>,
     uuid: &str
 ) -> Result<User, Status> { 
-    counter.increment_counter();
     let parsed_uuid = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
     let user = sqlx::query_as!(
             User,
@@ -145,12 +164,10 @@ async fn user(
 
 #[route(GET, uri = "/users/<name_grade>?<filters..>")]
 async fn users(
-    counter: &State<VisitorCounter>,
     pool: &rocket::State<PgPool>,
     name_grade: NameGrade<'_>, 
     filters: Option<Filters>,
 ) -> Result<NewUser, Status> {
-    counter.increment_counter();
     let mut query_str = String::from("SELECT * FROM users WHERE name LIKE $1 AND grade = $2");
     if filters.is_some() {
         query_str.push_str(" AND age = $3 AND active = $4");
@@ -188,7 +205,7 @@ async fn rocket() -> Rocket<Build> {
         visitor: AtomicU64::new(0),
     };
     our_rocket
-        .manage(visitor_counter)
+        .attach(visitor_counter)
         .manage(pool)
         .mount("/", routes![user, users, favicon])
         .register("/", catchers![not_found, forbidden])
