@@ -13,9 +13,11 @@ use rocket::fs::{NamedFile, relative};
 use rocket::http::{ContentType, Header, Status};
 use rocket::request::{FromParam, Request};
 use rocket::response::{self, Responder, Response};
-use serde::Deserialize;
-use sqlx::{FromRow, PgPool};
-use sqlx::postgres::PgPoolOptions;
+use rocket_db_pools::{
+        sqlx,
+        sqlx::{FromRow, PgPool},
+        Connection, Database,
+    };
 use uuid::Uuid;
 
 #[derive(FromForm)]
@@ -146,10 +148,9 @@ impl Fairing for XTraceId {
     }
 }
 
-#[derive(Deserialize)]
-struct Config {
-    database_url: String,
-}
+#[derive(Database)]
+#[database("main_connection")]
+struct DBConnection(PgPool);
 
 const X_TRACE_ID: &str = "X-TRACE-ID";
 
@@ -170,7 +171,7 @@ fn forbidden(req: &Request) -> String {
 
 #[route(GET, uri = "/user/<uuid>", rank = 1, format = "text/plain")]
 async fn user(
-    pool: &rocket::State<PgPool>,
+    mut db: Connection<DBConnection>,
     uuid: &str
 ) -> Result<User, Status> { 
     let parsed_uuid = Uuid::parse_str(uuid).map_err(|_| Status::BadRequest)?;
@@ -179,14 +180,14 @@ async fn user(
             "SELECT * FROM users WHERE uuid = $1",
             parsed_uuid
         )
-        .fetch_one(pool.inner())
+        .fetch_one(&mut *db)
         .await;
     user.map_err(|_| Status::NotFound)
 }
 
 #[route(GET, uri = "/users/<name_grade>?<filters..>")]
 async fn users(
-    pool: &rocket::State<PgPool>,
+    mut db: Connection<DBConnection>,
     name_grade: NameGrade<'_>, 
     filters: Option<Filters>,
 ) -> Result<NewUser, Status> {
@@ -202,7 +203,7 @@ async fn users(
             .bind(fts.age as i16)
             .bind(fts.active);
     }
-    let unwrapped_users = query.fetch_all(pool.inner()).await;
+    let unwrapped_users = query.fetch_all(&mut *db).await;
     let users: Vec<User> = unwrapped_users.map_err(|_| Status::InternalServerError)?;
     if users.is_empty() {
         Err(Status::NotFound)
@@ -215,22 +216,13 @@ async fn users(
 async fn rocket() -> Rocket<Build> {
     let x_trace_id = XTraceId {};
     let our_rocket = rocket::build();
-    let config: Config = our_rocket
-        .figment()
-        .extract()
-        .expect("Incorrect Rocket.toml configuration");
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&config.database_url)
-        .await
-        .expect("Failed to connect to database");
     let visitor_counter = VisitorCounter {
         visitor: AtomicU64::new(0),
     };
     our_rocket
+        .attach(DBConnection::init())
         .attach(visitor_counter)
         .attach(x_trace_id)
-        .manage(pool)
         .mount("/", routes![user, users, favicon])
         .register("/", catchers![not_found, forbidden])
 }
