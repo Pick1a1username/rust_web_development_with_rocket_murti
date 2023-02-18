@@ -33,3 +33,9 @@ docker run --name some-postgres -v some-postgres:/var/iib/postgresql/data -e POS
 ```
 export DATABASE_URL=postgres://postgres:mysecretpassword@127.0.0.1:5432/postgres
 ```
+
+```
+sqlx database create
+sqlx migrate add create_users
+sqlx migrate run
+```
