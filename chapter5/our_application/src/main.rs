@@ -4,7 +4,9 @@ extern crate rocket;
 use chrono::{offset::Utc, DateTime};
 use rocket::{Build, Rocket};
 use rocket::http::Status;
+use rocket::fs::{NamedFile, TempFile};
 use rocket::response::content::RawHtml;
+use rocket::request::Request;
 use rocket_db_pools::{
     sqlx::{FromRow, PgPool},
     Connection,
@@ -72,6 +74,51 @@ struct Pagination {
     limit: usize,
 }
 
+#[derive(sqlx::Type, Debug, FromFormField)]
+#[repr(i32)]
+enum PostType {
+    Text = 0,
+    Photo = 1,
+    Video = 2,
+}
+
+#[derive(FromForm)]
+struct Post {
+    uuid: OurUuid,
+    user_uuid: OurUuid,
+    post_type: PostType,
+    content: String,
+    created_at: OurDateTime,
+}
+
+trait DisplayPostContent {
+    fn raw_html() -> String;
+}
+
+struct TextPost(Post);
+
+impl DisplayPostContent for TextPost {
+    fn raw_html() -> String {
+        todo!("will implement later")
+    }
+}
+
+struct PhotoPost(Post);
+
+impl DisplayPostContent for PhotoPost {
+    fn raw_html() -> String {
+        todo!("will implement later")
+    }
+}
+
+struct VideoPost(Post);
+
+impl DisplayPostContent for VideoPost {
+    fn raw_html() -> String {
+        todo!("will implement later")
+    }
+}
+
 #[get("/users/<_uuid>", format = "text/html")]
 async fn get_user(mut _db: Connection<DBConnection>, _uuid: &str) -> HtmlResponse {
     todo!("will implement later")
@@ -112,7 +159,90 @@ async fn delete_user(mut _db: Connection<DBConnection>, _uuid: &str) -> HtmlResp
     todo!("will implement later")
 }
 
+#[get("/users/<_user_uuid>/posts/<_uuid>", format = "text/html")]
+async fn get_post(
+    mut _db: Connection<DBConnection>,
+    _user_uuid: &str,
+    _uuid: &str,
+) -> HtmlResponse {
+    todo!("will implement later")
+}
+
+#[get("/users/<_user_uuid>/posts?<_pagination>", format = "text/html")]
+async fn get_posts(
+    mut _db: Connection<DBConnection>,
+    _user_uuid: &str,
+    _pagination: Option<Pagination>,
+) -> HtmlResponse {
+    todo!("will implement later")
+}
+
+#[post("/users/<_user_uuid>/posts", format = "text/html", data = "<_upload>")]
+async fn create_post(
+    mut _db: Connection<DBConnection>,
+    _user_uuid: &str,
+    _upload: Form<Post>,
+) -> HtmlResponse {
+    todo!("will implement later")
+}
+
+#[delete("/users/<_user_uuid>/posts/<_uuid>", format = "text/html")]
+async fn delete_post(
+    mut _db: Connection<DBConnection>,
+    _user_uuid: &str,
+    _uuid: &str
+) -> HtmlResponse {
+    todo!("will implement later")
+}
+
+#[get("/<_filename>")]
+async fn assets(_filename: &str) -> NamedFile {
+    todo!("will implement later")
+}
+
+#[catch(404)]
+fn not_found(_: &Request) -> RawHtml<String> {
+    todo!("will implement later")
+}
+
+#[catch(422)]
+fn unprocessable_entity(_: &Request) -> RawHtml<String> {
+    todo!("will implement later")
+}
+
+#[catch(500)]
+fn internal_server_error(_: &Request) -> RawHtml<String> {
+    todo!("will implement later")
+}
+
 #[launch]
 async fn rocket() -> Rocket<Build> {
-    rocket::build().attach(DBConnection::init())
+    rocket::build()
+        .attach(DBConnection::init())
+        .mount(
+            "/",
+            routes![
+                get_user,
+                get_users,
+                new_user,
+                create_user,
+                edit_user,
+                put_user,
+                patch_user,
+                delete_user,
+                get_post,
+                get_posts,
+                create_post,
+                delete_post,
+            ]
+        )
+        .mount("/assets", routes![assets])
+        .register(
+            "/",
+            catchers![
+                not_found,
+                unprocessable_entity,
+                internal_server_error
+            ]
+        )
 }
