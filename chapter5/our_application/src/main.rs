@@ -1,5 +1,3 @@
-// Todo: Chapter5 Making user-generated contents
-
 #[macro_use]
 extern crate rocket;
 
@@ -12,10 +10,10 @@ use rocket_db_pools::{
     Connection,
     Database
 };
-use rocket::form::{self, DataField, Form, FromFormField, ValueField};
+use rocket::form::{self, DataField, Form, FromForm, FromFormField, ValueField};
 use uuid::Uuid;
 
-#[derive(sqlx::Type, Debug)]
+#[derive(sqlx::Type, Debug, FromFormField)]
 #[repr(i32)]
 enum UserStatus {
     Inactive = 0,
@@ -24,7 +22,7 @@ enum UserStatus {
 
 #[derive(Debug, FromRow, FromForm)]
 struct User {
-    uuid: Uuid,
+    uuid: OurUuid,
     username: String,
     email: String,
     password_hash: String,
@@ -40,11 +38,26 @@ struct DBConnection(PgPool);
 
 type HtmlResponse = Result<RawHtml<String>, Status>;
 
-#[derive(Debug, FromRow, FromFormField)]
+#[derive(Debug, FromRow)]
 struct OurDateTime(DateTime<Utc>);
 
 #[rocket::async_trait]
 impl<'r> FromFormField<'r> for OurDateTime {
+    fn from_value(_: ValueField<'r>) -> form::Result<'r, Self> {
+        todo!("will implement later")
+    }
+    async fn from_data(_: DataField<'r, '_>) -> form::Result<'r, Self> {
+        todo!("will implement later")
+    }
+}
+
+// uuid::Uuid cannot be used with rocket 0.5.0-rc.2.
+// so, try to do something like OurDateTime.
+#[derive(Debug, FromRow)]
+struct OurUuid(Uuid);
+
+#[rocket::async_trait]
+impl<'r> FromFormField<'r> for OurUuid {
     fn from_value(_: ValueField<'r>) -> form::Result<'r, Self> {
         todo!("will implement later")
     }
