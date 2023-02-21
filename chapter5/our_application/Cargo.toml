@@ -5,6 +5,14 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "our_application"
+path = "src/main.rs"
+
+[lib]
+name = "our_application"
+path = "src/lib.rs"
+
 [dependencies]
 sqlx = {version = "0.5.9", features = ["postgres", "uuid", "runtime-tokio-rustls", "chrono"]}
 chrono = "0.4"
