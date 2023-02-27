@@ -1,0 +1,27 @@
+[package]
+name = "our_application"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "our_application"
+path = "src/main.rs"
+
+[lib]
+name = "our_application"
+path = "src/lib.rs"
+
+[dependencies]
+sqlx = {version = "0.5.9", features = ["postgres", "uuid", "runtime-tokio-rustls", "chrono"]}
+chrono = "0.4"
+uuid = {version = "0.8.2", features = ["v4"]}
+
+[dependencies.rocket]
+version = "0.5.0-rc.2"
+features = ["uuid"]
+
+[dependencies.rocket_db_pools]
+version = "0.1.0-rc.2"
+features = ["sqlx_sqlite"]
