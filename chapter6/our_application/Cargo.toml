@@ -14,9 +14,14 @@ name = "our_application"
 path = "src/lib.rs"
 
 [dependencies]
-sqlx = {version = "0.5.9", features = ["postgres", "uuid", "runtime-tokio-rustls", "chrono"]}
+ammonia = "3.1.2"
+argon2 = "0.3"
 chrono = "0.4"
+rand_core = {version = "0.6", features = ["std"]}
+regex = "1.5.4"
+sqlx = {version = "0.5.9", features = ["postgres", "uuid", "runtime-tokio-rustls", "chrono"]}
 uuid = {version = "0.8.2", features = ["v4"]}
+zxcvbn = "2"
 
 [dependencies.rocket]
 version = "0.5.0-rc.2"

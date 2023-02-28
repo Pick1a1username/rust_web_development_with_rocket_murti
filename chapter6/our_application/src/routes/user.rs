@@ -1,8 +1,11 @@
 use super::HtmlResponse;
 use crate::fairings::db::DBConnection;
-use crate::models::{pagination::Pagination, user::User};
-use rocket::form::Form;
-use rocket_db_pools::Connection;
+use crate::models::{pagination::Pagination, user::{NewUser, User}};
+use rocket::form::{Contextual, Form};
+use rocket::http::Status;
+use rocket::request::FlashMessage;
+use rocket::response::{content::RawHtml, Flash, Redirect};
+use rocket_db_pools::{sqlx::Acquire, Connection};
 
 const USER_HTML_PREFIX: &str = r#"<!DOCTYPE html>
 <html lang="en">
@@ -15,24 +18,113 @@ const USER_HTML_PREFIX: &str = r#"<!DOCTYPE html>
 const USER_HTML_SUFFIX: &str = r#"</body>
 </html>"#;
 
-#[get("/users/<_uuid>", format = "text/html")]
-pub async fn get_user(mut _db: Connection<DBConnection>, _uuid: &str) -> HtmlResponse {
-    todo!("will implement later")
+#[get("/users/<uuid>", format = "text/html")]
+pub async fn get_user(mut db: Connection<DBConnection>, uuid: &str) -> HtmlResponse {
+    let connection = db
+        .acquire()
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+    let user = User::find(connection, uuid)
+        .await
+        .map_err(|_| Status::NotFound)?;
+    let mut html_string = String::from(USER_HTML_PREFIX);
+    html_string.push_str(&user.to_html_string());
+    html_string.push_str(format!("<a href\"/users/edit/{}\">Edit User</a>\"", user.uuid).as_ref());
+    html_string.push_str("<a href=\"/users\">User List</a>");
+    html_string.push_str(USER_HTML_SUFFIX);
+    Ok(RawHtml(html_string))
 }
 
-#[get("/users?<_pagination>", format = "text/html")]
-pub async fn get_users(mut _db: Connection<DBConnection>, _pagination: Option<Pagination>) -> HtmlResponse {
-    todo!("will implement later")
+#[get("/users?<pagination>", format = "text/html")]
+pub async fn get_users(mut db: Connection<DBConnection>, pagination: Option<Pagination>) -> HtmlResponse {
+    let (users, new_pagination) = User::find_all(&mut db, pagination)
+        .await
+        .map_err(|_| Status::NotFound)?;
+    let mut html_string = String::from(USER_HTML_PREFIX);
+    for user in users.iter() {
+        html_string.push_str(&user.to_html_string());
+        html_string.push_str(format!(r#"<a href="/users/{}">See User</a><br/>"#, user.uuid).as_ref());
+        html_string.push_str(format!(r#"<a href="/users/edit/{}">Edit User</a><br/>"#, user.uuid).as_ref());
+    }
+    if let Some(pg) = new_pagination {
+        html_string.push_str(
+            format!(
+                r#"<a href="/users?pagination.next={}&pagination.limit={}">Next</a><br/>"#,
+                &(pg.next.0).timestamp_nanos(),
+                &pg.limit,
+            )
+            .as_ref(),
+        );
+    }
+    html_string.push_str(r#"<a href="/users/new">New user</a>"#);
+    html_string.push_str(USER_HTML_SUFFIX);
+    Ok(RawHtml(html_string))
 }
 
 #[get("/users/new", format = "text/html")]
 pub async fn new_user(mut _db: Connection<DBConnection>) -> HtmlResponse {
-    todo!("will implement later")
+    let mut html_string = String::from(USER_HTML_PREFIX);
+    html_string.push_str(
+        r#"<form accept-charset="UTF-8" action="/users" autocomplete="off" method="POST">
+            <div>
+                <label for="username">Username:</label>
+                <input name="username" type="text"/>
+            </div>
+            <div>
+                <label for="email">Email:</label>
+                <input name="email" type="email"/>
+            </div>
+            <div>
+                <label for="password">Password:</label>
+                <input name="password" type="password"/>
+            </div>
+            <div>
+                <label for="password_confirmation">Password Confirmation:</label>
+                <input name="password_confirmation" type="password"/>
+            </div>
+            <div>
+                <label for="description">Tell us a little bit more about yourself:</label>
+                <textarea name="description"></textarea>
+            </div>
+            <button type="submit" value="Submit">Submit</button>
+        </form>"#,
+    );
+    html_string.push_str(USER_HTML_SUFFIX);
+    Ok(RawHtml(html_string))
 }
 
-#[post("/users", format = "text/html", data = "<_user>")]
-pub async fn create_user(mut _db: Connection<DBConnection>, _user: Form<User>) -> HtmlResponse {
-    todo!("will implement later")
+#[post("/users", format = "application/x-www-form-urlencoded", data = "<user_context>")]
+pub async fn create_user<'r>(mut db: Connection<DBConnection>, user_context: Form<Contextual<'r, NewUser<'r>>>) -> Result<Flash<Redirect>, Flash<Redirect>> {
+    if user_context.value.is_none() {
+        let error_message = format!(
+            "<div>{}</div>",
+            user_context
+                .context
+                .errors()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join("<br/>")
+        );
+        return Err(Flash::error(Redirect::to("/
+        users/new"), error_message));
+    }
+    let new_user = user_context.value.as_ref().unwrap();
+    let connection = db.acquire().await.map_err(|_| {
+        Flash::error(
+            Redirect::to("/users/new"),
+            "<div>Something went wrong when creating user</div>",
+        )
+    })?;
+    let user = User::create(connection, new_user).await.map_err(|_| {
+        Flash::error(
+            Redirect::to("/users/new"),
+            "<div>Something went wrong when creating user</div>",
+        )
+    })?;
+    Ok(Flash::success(
+        Redirect::to(format!("/users/{}", user.uuid)),
+        "<div>Successfully created user</div>",
+    ))
 }
 
 #[get("/users/edit/<_uuid>", format = "text/html")]
