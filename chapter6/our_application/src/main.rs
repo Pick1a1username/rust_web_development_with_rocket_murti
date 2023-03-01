@@ -24,6 +24,7 @@ async fn rocket() -> Rocket<Build> {
                 user::put_user,
                 user::patch_user,
                 user::delete_user,
+                user::delete_user_entry_point,
                 post::get_post,
                 post::get_posts,
                 post::create_post,
