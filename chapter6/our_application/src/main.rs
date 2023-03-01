@@ -20,6 +20,7 @@ async fn rocket() -> Rocket<Build> {
                 user::new_user,
                 user::create_user,
                 user::edit_user,
+                user::update_user,
                 user::put_user,
                 user::patch_user,
                 user::delete_user,
