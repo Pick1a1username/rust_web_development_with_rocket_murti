@@ -19,7 +19,11 @@ const USER_HTML_SUFFIX: &str = r#"</body>
 </html>"#;
 
 #[get("/users/<uuid>", format = "text/html")]
-pub async fn get_user(mut db: Connection<DBConnection>, uuid: &str) -> HtmlResponse {
+pub async fn get_user(
+    mut db: Connection<DBConnection>,
+    uuid: &str,
+    flash: Option<FlashMessage<'_>>,
+) -> HtmlResponse {
     let connection = db
         .acquire()
         .await
@@ -32,6 +36,9 @@ pub async fn get_user(mut db: Connection<DBConnection>, uuid: &str) -> HtmlRespo
     html_string.push_str(format!("<a href\"/users/edit/{}\">Edit User</a>\"", user.uuid).as_ref());
     html_string.push_str("<a href=\"/users\">User List</a>");
     html_string.push_str(USER_HTML_SUFFIX);
+    if flash.is_some() {
+        html_string.push_str(flash.unwrap().message());
+    }
     Ok(RawHtml(html_string))
 }
 
@@ -62,8 +69,11 @@ pub async fn get_users(mut db: Connection<DBConnection>, pagination: Option<Pagi
 }
 
 #[get("/users/new", format = "text/html")]
-pub async fn new_user(mut _db: Connection<DBConnection>) -> HtmlResponse {
+pub async fn new_user(flash: Option<FlashMessage<'_>>) -> HtmlResponse {
     let mut html_string = String::from(USER_HTML_PREFIX);
+    if flash.is_some() {
+        html_string.push_str(flash.unwrap().message());
+    }
     html_string.push_str(
         r#"<form accept-charset="UTF-8" action="/users" autocomplete="off" method="POST">
             <div>
@@ -105,8 +115,7 @@ pub async fn create_user<'r>(mut db: Connection<DBConnection>, user_context: For
                 .collect::<Vec<_>>()
                 .join("<br/>")
         );
-        return Err(Flash::error(Redirect::to("/
-        users/new"), error_message));
+        return Err(Flash::error(Redirect::to("/users/new"), error_message));
     }
     let new_user = user_context.value.as_ref().unwrap();
     let connection = db.acquire().await.map_err(|_| {

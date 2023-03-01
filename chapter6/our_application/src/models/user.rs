@@ -155,7 +155,7 @@ impl User{
 
 #[derive(Debug, FromForm)]
 pub struct NewUser<'r> {
-    #[field(validate = len(5..20).or_else(msg!("name cannot be empty")))]
+    #[field(validate = len(5..20).or_else(msg!("name should be 5 - 20 characters")))]
     pub username: &'r str,
     #[field(validate = validate_email().or_else(msg!("invalid email")))]
     pub email: &'r str,
@@ -170,29 +170,17 @@ pub struct NewUser<'r> {
 fn validate_password(password: &str) -> form::Result<'_, ()> {
     let entropy = zxcvbn(password, &[]);
     if entropy.is_err() || entropy.unwrap().score() < 3 {
-        return Err(FormError::validation("weak 
-        password").into());
+        return Err(FormError::validation("weak password").into());
     }
     Ok(())
 }
 
 fn validate_email(email: &str) -> form::Result<'_, ()> {
-    const EMAIL_REGEX: &str = r#"(?:[a-z0-9!#$%&
-    '*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]
-    +)*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\
-    x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\
-    x0e-\x7f])*")@(?:(?:[a-z0-9](?:[a-z0-9-]*[
-    a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-
-    z0-9])?|\[(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][
-    0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][
-    0-9]?|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08
-    \x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01
-    -\x09\x0b\x0c\x0e-\x7f])+)\])"#;
+    const EMAIL_REGEX: &str = r#"(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\[(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])"#;
     let email_regex = Regex::new(EMAIL_REGEX).
     unwrap();
     if !email_regex.is_match(email) {
-        return Err(FormError::validation("invalid 
-        email").into());
+        return Err(FormError::validation("invalid email").into());
     }
     Ok(())
 }
