@@ -16,7 +16,10 @@ path = "src/lib.rs"
 [dependencies]
 ammonia = "3.1.2"
 argon2 = {version = "0.3", features = ["std"]}
+async-log = "2.0.0"
 chrono = "0.4"
+fern = "0.6"
+log = "0.4"
 rand_core = {version = "0.6", features = ["std"]}
 regex = "1.5.4"
 sqlx = {version = "0.5.9", features = ["postgres", "uuid", "runtime-tokio-rustls", "chrono"]}

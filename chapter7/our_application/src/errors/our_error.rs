@@ -30,6 +30,9 @@ impl Error for OurError {
 
 impl OurError {
     fn new_error_with_status(status: Status, message: String, debug: Option<Box<dyn Error>>) -> Self {
+        if debug.is_some() {
+            log::error!("Error: {:?}", &debug);
+        }
         OurError {
             status,
             message,
