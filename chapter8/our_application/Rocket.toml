@@ -1,0 +1,7 @@
+[default]
+log_level = "normal"
+cli_colors = false
+template_dir = "src/views"
+
+[default.databases.main_connection]
+url = "postgres://postgres:mysecretpassword@127.0.0.1:5432/postgres"
