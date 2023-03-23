@@ -39,3 +39,18 @@ sqlx database create
 sqlx migrate add create_users
 sqlx migrate run
 ```
+
+### insert records
+
+```sql
+INSERT INTO users (uuid, username, email, password_hash, description, status)
+VALUES
+('00000000-0000-0000-0000-000000000000', 'testuser0', 'testuser0@test.com', 'no_password', 'testuser0 description', 1),
+('00000000-0000-0000-0000-000000000001', 'testuser1', 'testuser1@test.com', 'no_password', 'testuser1 description', 1);
+
+INSERT INTO posts (uuid, user_uuid, post_type, content)
+VALUES
+('11111111-0000-0000-0000-000000000000', '00000000-0000-0000-0000-000000000000', 0, 'Lorem ipsum'),
+('11111111-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000000', 1, '/assets/443822918_97d2ae0e60.jpg'),
+('11111111-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 2, '/assets/clock.mp4');
+```
