@@ -1,9 +1,9 @@
 use super::post::Post;
 use crate::traits::DisplayPostContent;
 
-pub struct VideoPost(pub Post);
+pub struct VideoPost<'a>(&'a Post);
 
-impl DisplayPostContent for VideoPost {
+impl<'a> DisplayPostContent for VideoPost<'a> {
     fn raw_html(&self) -> String {
         format!(
             r#"<video width="320" height="240" controls>
@@ -12,5 +12,11 @@ impl DisplayPostContent for VideoPost {
             </video>"#,
             self.0.content
         )
+    }
+}
+
+impl<'a> VideoPost<'a> {
+    pub fn new(post: &'a Post) -> Self {
+        VideoPost(post)
     }
 }
