@@ -20,7 +20,7 @@
           <label for="upload">Upload file:</label>
         </div>
         <div class="col-sm-12 col-md">
-          <input type="file" name="file" accept="text/plain">
+          <input type="file" name="file" accept="text/plain,image/*">
         </div>
       </div>
       <button type="submit" value="Submit">Submit</button>

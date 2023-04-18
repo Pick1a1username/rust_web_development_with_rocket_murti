@@ -1,20 +1,23 @@
+use std::io::Cursor;
+use std::ops::Deref;
+use std::path::Path;
 
-use multer::Multipart;
-use rocket::data::{ByteUnit, Data};
+use image::codecs::jpeg::JpegEncoder;
+use image::error::ImageError;
+use image::io::Reader as ImageReader;
+use image::{DynamicImage, ImageEncoder};
 use rocket::form::Form;
 use rocket::http::Status;
 use rocket::request::FlashMessage;
 use rocket::response::{Flash, Redirect};
 use rocket_db_pools::{sqlx::Acquire, Connection};
 use rocket_dyn_templates::{context, Template};
-use tokio_util;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 
 use super::HtmlResponse;
 use crate::fairings::db::DBConnection;
-use crate::guards::RawContentType;
-use crate::models::{pagination::Pagination, post::{Post, ShowPost}, post_type::PostType, user::User};
-
-const TEXT_LIMIT: ByteUnit = ByteUnit::Kibibyte(64); 
+use crate::models::{pagination::Pagination, post::{NewPost, Post, ShowPost}, post_type::PostType, user::User};
 
 #[get("/users/<user_uuid>/posts/<uuid>", format = "text/html")]
 pub async fn get_post(
@@ -46,9 +49,8 @@ pub async fn get_posts(
     mut db: Connection<DBConnection>,
     user_uuid: &str,
     pagination: Option<Pagination>,
-    flash: Option<FlashMessage<'_>>,
+    _flash: Option<FlashMessage<'_>>,
 ) -> HtmlResponse {
-    let flash_message = flash.map(|fm| String::from(fm.message()));
     let user = User::find(&mut db, user_uuid).await.map_err(|e| e.status)?;
     let (posts, new_pagination) = Post::find_all(&mut db, user_uuid, pagination)
         .await
@@ -62,11 +64,10 @@ pub async fn get_posts(
 }
 
 #[post("/users/<user_uuid>/posts", format = "multipart/form-data", data = "<upload>", rank = 1)]
-pub async fn create_post(
+pub async fn create_post<'r>(
     mut db: Connection<DBConnection>,
     user_uuid: &str,
-    content_type: RawContentType<'_>,
-    upload: Data<'_>,
+    mut upload: Form<NewPost<'r>>,
 ) -> Result<Flash<Redirect>, Flash<Redirect>> {
     let create_err = || {
         Flash::error(
@@ -74,24 +75,85 @@ pub async fn create_post(
             "Something went wrong when uploading file",
         )
     };
-    let boundary = multer::parse_boundary(content_type.0).map_err(|_| create_err())?;
-    let upload_stream = upload.open(TEXT_LIMIT);
-    let mut multipart = Multipart::new(tokio_util::io::ReaderStream::new(upload_stream), boundary);
-    let mut text_post = String::new();
-    while let Some(mut field) = multipart.next_field().await.map_err(|_| create_err())? {
-        let field_name = field.name();
-        let file_name = field.file_name();
-        let content_type = field.content_type();
-        println!(
-            "Field name: {:?}, File name: {:?}, Content-Type: {:?}",
-            field_name, file_name, content_type
-        );
-        while let Some(field_chunk) = field.chunk().await.map_err(|_| create_err())? {
-            text_post.push_str(std::str::from_utf8(field_chunk.as_ref()).unwrap());
-        }
+    let file_uuid = uuid::Uuid::new_v4().to_string();
+    if upload.file.content_type().is_none() {
+        return Err(create_err());
     }
+    let ext = upload.file.content_type().unwrap().extension().unwrap();
+    let tmp_filename = format!("/tmp/{}.{}", &file_uuid, &ext);
+    upload
+        .file
+        .persist_to(tmp_filename)
+        .await
+        .map_err(|_| create_err())?;
+    let mut content = String::new();
+    let mut post_type = PostType::Text;
+    let mt = upload.file.content_type().unwrap().deref();
+    if mt.is_text() {
+        let orig_path = upload.file.path().unwrap().to_string_lossy().to_string();
+        let mut text_content = vec![];
+        let _ = File::open(orig_path)
+            .await
+            .map_err(|_| create_err())?
+            .read_to_end(&mut text_content)
+            .await
+            .map_err(|_| create_err())?;
+        content.push_str(std::str::from_utf8(&text_content).unwrap());
+    } else if mt.is_bmp() || mt.is_jpeg() || mt.is_png() || mt.is_gif() {
+        post_type = PostType::Photo;
+        let orig_path = upload.file.path().unwrap().to_string_lossy().to_string();
+        let dest_filename = format!("{}.jpg", file_uuid);
+        content.push_str("/assets/");
+        content.push_str(&dest_filename);
+    
+        let orig_file = tokio::fs::read(orig_path).await.map_err(|_| create_err())?;
+        let read_buffer = Cursor::new(orig_file);
+        let encoded_result: Result<DynamicImage, ()> = tokio::task::spawn_blocking(|| {
+            Ok(ImageReader::new(read_buffer)
+                .with_guessed_format()
+                .map_err(|_| ())?
+                .decode()
+                .map_err(|_| ())?)
+        })
+            .await
+            .map_err(|_| create_err())?;
+        let image = encoded_result.map_err(|_| create_err())?;
+        
+        let write_result: Result<Vec<u8>, ImageError> = tokio::task::spawn_blocking(move || {
+            let mut write_buffer: Vec<u8> = vec![];
+            let mut write_cursor = Cursor::new(&mut write_buffer);
+            let _ = JpegEncoder::new_with_quality(&mut write_cursor, 75).write_image(
+                image.as_bytes(),
+                image.width(),
+                image.height(),
+                image.color(),
+            )?;
+            Ok(write_buffer)
+        })
+            .await
+            .map_err(|_| create_err())?;
+        let write_bytes = write_result.map_err(|_| create_err())?;
+        let dest_path = Path::new(rocket::fs::relative!("static")).join(&dest_filename);
+        tokio::fs::write(dest_path, &write_bytes)
+            .await
+            .map_err(|_| create_err())?;
+    } else if mt.is_svg() {
+        post_type = PostType::Photo;
+        let dest_filename = format!("{}.svg", file_uuid);
+        content.push_str("/assets/");
+        content.push_str(&dest_filename);
+        let dest_path = Path::new(rocket::fs::relative!("static")).join(&dest_filename);
+        upload
+            .file
+            .move_copy_to(&dest_path)
+            .await
+            .map_err(|_| create_err())?;
+    } else {
+        return Err(create_err());
+    }
+
     let connection = db.acquire().await.map_err(|_| create_err())?;
-    Post::create(connection, user_uuid, PostType::Text, &text_post)
+    Post::create(connection, user_uuid, post_type, &content)
         .await
         .map_err(|_| create_err())?;
     Ok(Flash::success(

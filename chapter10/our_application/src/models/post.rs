@@ -1,3 +1,4 @@
+use rocket::fs::TempFile;
 use rocket::serde::Serialize;
 use rocket_db_pools::sqlx::{FromRow, PgConnection};
 use rocket_db_pools::{sqlx::Acquire, Connection};
@@ -177,3 +178,7 @@ pub struct ShowPost {
     pub post_html: String,
 }
 
+#[derive(Debug, FromForm)]
+pub struct NewPost<'r> {
+    pub file: TempFile<'r>,
+}
