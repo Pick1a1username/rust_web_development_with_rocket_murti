@@ -19,6 +19,8 @@ argon2 = {version = "0.3", features = ["std"]}
 async-log = "2.0.0"
 chrono = {version = "0.4", features = ["serde"]}
 fern = "0.6"
+ffmpeg-cli = "0.1"
+flume = "0.10.10"
 log = "0.4"
 image = "0.24.0"
 rand_core = {version = "0.6", features = ["std"]}

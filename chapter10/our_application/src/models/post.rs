@@ -95,7 +95,7 @@ impl Post {
         Uuid::parse_str(user_uuid).map_err(OurError::from_uuid_error)?;
         let query_str = r#"SELECT *
             FROM posts
-            WHERE user_uuid = $1 AND☐created_at < $2
+            WHERE user_uuid = $1 AND created_at < $2
             ORDER BY created_at☐DESC
             LIMIT $3"#;
         let connection = db.acquire().await.map_err(OurError::from_sqlx_error)?;
@@ -169,6 +169,20 @@ impl Post {
             .fetch_one(connection)
             .await
             .map_err(OurError::from_sqlx_error)?)
+    }
+    pub async fn make_permanent(
+        connection: &mut PgConnection,
+        uuid: &str,
+        content: &str,
+    ) -> Result<Post, OurError> {
+        let parsed_uuid = Uuid::parse_str(uuid).map_err(OurError::from_uuid_error)?;
+        let query_str = String::from("UPDATE posts SET content = $1 WHERE uuid = $2 RETURNING *");
+        Ok(sqlx::query_as::<_, Self>(&query_str)
+            .bind(content)
+            .bind(&parsed_uuid)
+            .fetch_one(connection)
+            .await
+            .map_err(OurError::from_sqlx_error))?
     }
 }
 

@@ -20,11 +20,10 @@
           <label for="upload">Upload file:</label>
         </div>
         <div class="col-sm-12 col-md">
-          <input type="file" name="file" accept="text/plain,image/*">
+          <input type="file" name="file" accept="text/plain,image/*,video/*">
         </div>
       </div>
       <button type="submit" value="Submit">Submit</button>
     </fieldset>
   </form>
-  <a href="/users/{{ user.uuid }}/posts/new" class="button">Upload Post</a>
 {% endblock %}

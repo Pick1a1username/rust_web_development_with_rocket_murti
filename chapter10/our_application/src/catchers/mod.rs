@@ -3,7 +3,7 @@ use rocket::response::content::RawHtml;
 
 #[catch(404)]
 pub fn not_found(_: &Request) -> RawHtml<String> {
-    todo!("will implement later")
+    RawHtml("Not Found!".to_string())
 }
 
 #[catch(422)]

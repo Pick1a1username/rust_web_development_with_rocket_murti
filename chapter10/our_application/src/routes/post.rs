@@ -2,6 +2,7 @@ use std::io::Cursor;
 use std::ops::Deref;
 use std::path::Path;
 
+use flume::Sender;
 use image::codecs::jpeg::JpegEncoder;
 use image::error::ImageError;
 use image::io::Reader as ImageReader;
@@ -10,14 +11,16 @@ use rocket::form::Form;
 use rocket::http::Status;
 use rocket::request::FlashMessage;
 use rocket::response::{Flash, Redirect};
+use rocket::State;
 use rocket_db_pools::{sqlx::Acquire, Connection};
 use rocket_dyn_templates::{context, Template};
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 
 use super::HtmlResponse;
+use crate::errors::our_error::OurError;
 use crate::fairings::db::DBConnection;
-use crate::models::{pagination::Pagination, post::{NewPost, Post, ShowPost}, post_type::PostType, user::User};
+use crate::models::{worker::Message, pagination::Pagination, post::{NewPost, Post, ShowPost}, post_type::PostType, user::User};
 
 #[get("/users/<user_uuid>/posts/<uuid>", format = "text/html")]
 pub async fn get_post(
@@ -68,6 +71,7 @@ pub async fn create_post<'r>(
     mut db: Connection<DBConnection>,
     user_uuid: &str,
     mut upload: Form<NewPost<'r>>,
+    tx: &State<Sender<Message>>,
 ) -> Result<Flash<Redirect>, Flash<Redirect>> {
     let create_err = || {
         Flash::error(
@@ -89,6 +93,8 @@ pub async fn create_post<'r>(
     let mut content = String::new();
     let mut post_type = PostType::Text;
     let mt = upload.file.content_type().unwrap().deref();
+    let mut wm = Message::new();
+    let mut is_video = false;
     if mt.is_text() {
         let orig_path = upload.file.path().unwrap().to_string_lossy().to_string();
         let mut text_content = vec![];
@@ -148,18 +154,43 @@ pub async fn create_post<'r>(
             .move_copy_to(&dest_path)
             .await
             .map_err(|_| create_err())?;
+    } else if mt.is_mp4() || mt.is_mpeg() || mt.is_ogg() || mt.is_mov() || mt.is_webm() {
+        post_type = PostType::Video;
+        let dest_filename = format!("{}.mp4", file_uuid);
+        content.push_str("loading/assets/");
+        content.push_str(&dest_filename);
+        is_video = true;
+        wm.orig_filename = upload
+            .file
+            .path()
+            .unwrap()
+            .to_string_lossy()
+            .to_string()
+            .clone();
+        wm.dest_filename = dest_filename.clone();
     } else {
         return Err(create_err());
     }
 
     let connection = db.acquire().await.map_err(|_| create_err())?;
-    Post::create(connection, user_uuid, post_type, &content)
+    Ok(Post::create(connection, user_uuid, post_type, &content)
         .await
-        .map_err(|_| create_err())?;
-    Ok(Flash::success(
-        Redirect::to(format!("/users/{}/posts", user_uuid)),
-        "Successfully created post",
-    ))
+        .and_then(move |post| {
+            if is_video {
+                wm.uuid = post.uuid.to_string();
+                let _ = tx.send(wm).map_err(|_| {
+                    OurError::new_internal_server_error(
+                        String::from("Cannot process message"),
+                        None,
+                    )
+                })?;
+            }
+            Ok(Flash::success(
+                Redirect::to(format!("/users/{}/posts", user_uuid)),
+                "Successfully created post",
+            ))
+        })
+    .map_err(|_| create_err())?)
 }
 
 #[delete("/users/<_user_uuid>/posts/<_uuid>", format = "text/html")]

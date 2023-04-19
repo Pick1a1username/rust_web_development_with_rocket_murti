@@ -12,6 +12,7 @@ pub mod text_post;
 pub mod user;
 pub mod user_status;
 pub mod video_post;
+pub mod worker;
 
 pub fn clean_html(src: &str) -> String {
     Builder::default()
